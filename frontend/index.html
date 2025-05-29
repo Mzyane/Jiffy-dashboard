@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Jiffy Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    /* Table styling with borders */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      text-align: left;
+    }
+    th {
+      background-color: #f4f4f4;
+      font-weight: bold;
+    }
+    td {
+      background-color: #fafafa;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="assets/logo.png" class="logo-small" alt="Jiffy Logo" />
+    <h1>Jiffy Dashboard</h1>
+  </header>
+
+  <nav class="tabs">
+    <button onclick="showTab('live')">📡 Live Tags</button>
+    <button onclick="showTab('history')">🕒 Tag History</button>
+    <button onclick="showTab('export')">📤 Export</button>
+  </nav>
+
+  <main>
+    <!-- Live Tag View -->
+    <section id="live" class="tab">
+      <h2>Live Tags</h2>
+      <div style="margin-bottom: 10px;">
+        <button onclick="clearTags()">🧹 Clear All</button>
+        <button onclick="printReceipt()">💳 Pay & Print Receipt</button>
+      </div>
+      <table id="liveTagTable">
+        <thead>
+          <tr>
+            <th>EPC</th>
+            <th>Product Name</th>
+            <th>Price (OMR)</th>
+            <th>Quantity</th>
+            <th>Total Price (OMR)</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <!-- Tag History -->
+    <section id="history" class="tab" style="display:none;">
+      <h2>Tag History</h2>
+      <input type="text" id="searchBox" placeholder="Search EPC..." />
+      <table id="historyTable">
+        <thead>
+          <tr>
+            <th>EPC</th>
+            <th>RSSI</th>
+            <th>Timestamp</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <!-- Export Page -->
+    <section id="export" class="tab" style="display:none;">
+      <h2>Export Data</h2>
+      <button onclick="exportCSV()">Download CSV</button>
+    </section>
+  </main>
+
+  <script>
+    // Convert a hexadecimal string to ASCII.
+    function hexToAscii(hex) {
+      let str = "";
+      for (let i = 0; i < hex.length; i += 2) {
+        str += String.fromCharCode(parseInt(hex.substr(i, 2), 16));
+      }
+      return str.trim();
+    }
+  
+    // Check whether a string is entirely hexadecimal.
+    function isHex(str) {
+      return /^[0-9A-Fa-f]+$/.test(str);
+    }
+  
+    // Returns the product name from the tag.
+    // If tag.product is an object, use tag.product.name;
+    // if it is a string, use it directly; otherwise return an empty string.
+    function getRawProductName(tag) {
+      if (tag.product) {
+        if (typeof tag.product === "object" && tag.product.name) {
+          return tag.product.name;
+        }
+        if (typeof tag.product === "string") {
+          return tag.product;
+        }
+      }
+      return "";
+    }
+  
+    // Use the raw product name to get a display name.
+    // Converts hex to ASCII if necessary and provides a default if empty.
+    function getProductName(rawName) {
+      if (rawName && rawName.trim().length > 0) {
+        return isHex(rawName) ? hexToAscii(rawName) : rawName;
+      }
+      return "Default Product";
+    }
+  
+    // Fetch the live tags and update the table.
+    function fetchTags() {
+      fetch('http://localhost:8080/api/tags')
+        .then(response => response.json())
+        .then(tags => {
+          const tagMap = new Map();
+          let grandTotal = 0;
+          tags.forEach(tag => {
+            const epc = tag.epc;
+            const rawName = getRawProductName(tag);
+            const productName = getProductName(rawName);
+            const price = (tag.product && tag.product.price) ? tag.product.price : 0.0;
+            if (!tagMap.has(epc)) {
+              tagMap.set(epc, { epc, name: productName, price, quantity: 1 });
+            } else {
+              tagMap.get(epc).quantity++;
+            }
+          });
+  
+          const tbody = document.querySelector('#liveTagTable tbody');
+          tbody.innerHTML = '';
+  
+          tagMap.forEach(entry => {
+            const total = entry.price * entry.quantity;
+            grandTotal += total;
+            const row = document.createElement('tr');
+            row.innerHTML = `
+              <td>${entry.epc}</td>
+              <td>${entry.name}</td>
+              <td>${entry.price.toFixed(3)}</td>
+              <td>${entry.quantity}</td>
+              <td>${total.toFixed(3)}</td>
+            `;
+            tbody.appendChild(row);
+          });
+  
+          // Append a row for total cart value.
+          const totalRow = document.createElement('tr');
+          totalRow.innerHTML = `
+            <td colspan="4" style="text-align:right; font-weight:bold;">Total Cart Value:</td>
+            <td style="font-weight:bold;">${grandTotal.toFixed(3)} OMR</td>
+          `;
+          tbody.appendChild(totalRow);
+        })
+        .catch(error => console.error('Error fetching tags:', error));
+    }
+  
+    // Clear all scanned tags.
+    function clearTags() {
+      if (confirm("Clear all scanned tags?")) {
+        fetch('http://localhost:8080/api/tags', { method: 'DELETE' })
+          .then(() => fetchTags())
+          .catch(error => console.error('Error clearing tags:', error));
+      }
+    }
+  
+    // Print a receipt.
+    function printReceipt() {
+      fetch('http://localhost:8080/api/tags')
+        .then(response => response.json())
+        .then(tags => {
+          const tagMap = new Map();
+          let grandTotal = 0;
+          tags.forEach(tag => {
+            const epc = tag.epc;
+            const rawName = getRawProductName(tag);
+            const productName = getProductName(rawName);
+            const price = (tag.product && tag.product.price) ? tag.product.price : 0.0;
+            if (!tagMap.has(epc)) {
+              tagMap.set(epc, { epc, name: productName, price, quantity: 1 });
+            } else {
+              tagMap.get(epc).quantity++;
+            }
+          });
+  
+          const finalTags = [];
+          tagMap.forEach(entry => {
+            const total = entry.price * entry.quantity;
+            grandTotal += total;
+            for (let i = 0; i < entry.quantity; i++) {
+              finalTags.push({ epc: entry.epc, product: { name: entry.name, price: entry.price } });
+            }
+          });
+  
+          const receipt = {
+            id: "R-" + Date.now(),
+            timestamp: new Date().toISOString(),
+            total: grandTotal,
+            items: finalTags
+          };
+  
+          fetch('http://localhost:8080/api/receipts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(receipt)
+          })
+          .then(() => {
+            const printWindow = window.open('', '_blank');
+            let html = `
+              <html>
+                <head><title>Jiffy Receipt</title></head>
+                <body>
+                  <h2>Receipt #${receipt.id}</h2>
+                  <p>${new Date(receipt.timestamp).toLocaleString()}</p>
+                  <table border="1" cellpadding="6" cellspacing="0">
+                    <tr><th>EPC</th><th>Product</th><th>Price (OMR)</th></tr>`;
+            receipt.items.forEach(item => {
+              html += `<tr>
+                         <td>${item.epc}</td>
+                         <td>${item.product.name}</td>
+                         <td>${item.product.price.toFixed(3)}</td>
+                       </tr>`;
+            });
+            html += `
+                    <tr>
+                      <td colspan="2" style="text-align:right; font-weight:bold;">Total:</td>
+                      <td style="font-weight:bold;">${receipt.total.toFixed(3)} OMR</td>
+                    </tr>
+                  </table>
+                </body>
+              </html>`;
+            printWindow.document.write(html);
+            printWindow.document.close();
+            clearTags(); // Clear tags after printing.
+          })
+          .catch(error => console.error('Error posting receipt:', error));
+        })
+        .catch(error => console.error('Error printing receipt:', error));
+    }
+  
+    // Export live tag data as CSV.
+    function exportCSV() {
+      fetch('http://localhost:8080/api/tags')
+        .then(response => response.json())
+        .then(tags => {
+          let csvContent = "data:text/csv;charset=utf-8,";
+          csvContent += "EPC,Product Name,Price (OMR),Quantity,Total Price (OMR)\n";
+          const tagMap = new Map();
+          let grandTotal = 0;
+          tags.forEach(tag => {
+            const epc = tag.epc;
+            const rawName = getRawProductName(tag);
+            const productName = getProductName(rawName);
+            const price = (tag.product && tag.product.price) ? tag.product.price : 0.0;
+            if (!tagMap.has(epc)) {
+              tagMap.set(epc, { epc, name: productName, price, quantity: 1 });
+            } else {
+              tagMap.get(epc).quantity++;
+            }
+          });
+          tagMap.forEach(entry => {
+            const total = entry.price * entry.quantity;
+            grandTotal += total;
+            csvContent += `${entry.epc},${entry.name},${entry.price.toFixed(3)},${entry.quantity},${total.toFixed(3)}\n`;
+          });
+          csvContent += `,Total Cart Value,,,${grandTotal.toFixed(3)}\n`;
+          const encodedUri = encodeURI(csvContent);
+          const link = document.createElement("a");
+          link.setAttribute("href", encodedUri);
+          link.setAttribute("download", "tags.csv");
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        })
+        .catch(error => console.error('Error exporting CSV:', error));
+    }
+  
+    // Show the selected tab and hide the others.
+    function showTab(tabId) {
+      document.querySelectorAll(".tab").forEach(tab => {
+        tab.style.display = (tab.id === tabId) ? "block" : "none";
+      });
+    }
+  
+    // Initial fetch on page load and update every 5 seconds.
+    fetchTags();
+    setInterval(fetchTags, 5000);
+  </script>
+</body>
+</html>

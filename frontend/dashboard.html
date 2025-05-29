@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Jiffy Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    /* Table styling with borders */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      text-align: left;
+    }
+    th {
+      background-color: #f4f4f4;
+      font-weight: bold;
+    }
+    td {
+      background-color: #fafafa;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="assets/logo.png" class="logo-small" alt="Jiffy Logo" />
+    <h1>Jiffy Dashboard</h1>
+  </header>
+
+  <nav class="tabs">
+    <button onclick="showTab('live')">📡 Live Tags</button>
+    <button onclick="showTab('history')">🕒 Tag History</button>
+    <button onclick="showTab('export')">📤 Export</button>
+  </nav>
+
+  <main>
+    <!-- Live Tag View -->
+    <section id="live" class="tab">
+      <h2>Live Tags</h2>
+      <div style="margin-bottom: 10px;">
+        <button onclick="clearTags()">🧹 Clear All</button>
+        <!-- Removed Pay & Print Receipt button -->
+      </div>
+      <table id="liveTagTable">
+        <thead>
+          <tr>
+            <th>EPC</th>
+            <th>Product Name</th>
+            <th>Price (OMR)</th>
+            <th>Quantity</th>
+            <th>Total Price (OMR)</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <!-- Tag History -->
+    <section id="history" class="tab" style="display:none;">
+      <h2>Tag History</h2>
+      <input type="text" id="searchBox" placeholder="Search EPC..." />
+      <table id="historyTable">
+        <thead><tr><th>EPC</th><th>RSSI</th><th>Timestamp</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <!-- Export Page -->
+    <section id="export" class="tab" style="display:none;">
+      <h2>Export Data</h2>
+      <button onclick="exportCSV()">Download CSV</button>
+    </section>
+  </main>
+
+  <script>
+    
+    function fetchTags() {
+      fetch('http://localhost:8080/api/tags')
+        .then(response => response.json())
+        .then(tags => {
+          const tagMap = new Map();
+          let grandTotal = 0;
+    
+          tags.forEach(tag => {
+            const epc = tag.epc;
+            const product = tag.product || { name: "Unknown", price: 0.0 };
+    
+            if (!tagMap.has(epc)) {
+              tagMap.set(epc, {
+                epc: epc,
+                name: product.name, // 👉 Just use it directly
+                price: product.price,
+                quantity: 1
+              });
+            } else {
+              tagMap.get(epc).quantity += 1;
+            }
+          });
+    
+          const tbody = document.querySelector('#liveTagTable tbody');
+          tbody.innerHTML = '';
+    
+          tagMap.forEach(entry => {
+            const total = entry.price * entry.quantity;
+            grandTotal += total;
+    
+            const row = document.createElement('tr');
+            row.innerHTML = `
+              <td>${entry.epc}</td>
+              <td>${entry.name}</td> <!-- 👈 Correctly show name -->
+              <td>${entry.price.toFixed(3)}</td>
+              <td>${entry.quantity}</td>
+              <td>${total.toFixed(3)}</td>
+            `;
+            tbody.appendChild(row);
+          });
+    
+          const totalRow = document.createElement('tr');
+          totalRow.innerHTML = `
+            <td colspan="4" style="text-align:right; font-weight:bold;">Total Cart Value:</td>
+            <td style="font-weight:bold;">${grandTotal.toFixed(3)} OMR</td>
+          `;
+          tbody.appendChild(totalRow);
+        })
+        .catch(error => {
+          console.error('Error fetching tags:', error);
+        });
+    }
+    
+
+    function clearTags() {
+      if (confirm("Clear all scanned tags?")) {
+        fetch('http://localhost:8080/api/tags', {
+          method: 'DELETE'
+        }).then(() => fetchTags());
+      }
+    }
+
+    function showTab(tabId) {
+      const tabs = document.querySelectorAll('.tab');
+      tabs.forEach(tab => {
+        tab.style.display = tab.id === tabId ? 'block' : 'none';
+      });
+    }
+
+    function hexToAscii(hex) {
+      let str = "";
+      for (let i = 0; i < hex.length; i += 2) {
+        str += String.fromCharCode(parseInt(hex.substr(i, 2), 16));
+      }
+      return str.trim();
+    }
+
+    function hexToDecimal(hex) {
+      return parseInt(hex, 16);
+    }
+
+    setInterval(fetchTags, 5000); // Fetch every 5 seconds
+    fetchTags(); // Initial call
+  </script>
+</body>
+</html>

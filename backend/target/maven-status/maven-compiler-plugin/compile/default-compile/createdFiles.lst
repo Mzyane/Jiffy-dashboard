@@ -1,0 +1,6 @@
+com\jiffy\backend\Application.class
+com\jiffy\backend\service\SerialReaderService.class
+com\jiffy\reader\JiffySerialReader.class
+com\jiffy\backend\model\Tag.class
+com\jiffy\backend\repository\TagRepository.class
+com\jiffy\backend\controller\TagController.class

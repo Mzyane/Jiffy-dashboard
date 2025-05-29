@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Admin - Link Products to EPC</title>
+  <style>
+    body { font-family: sans-serif; margin: 40px; background: #f4f4f4; }
+    label, input, button { display: block; margin: 10px 0; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { padding: 10px; border: 1px solid #ccc; background: white; text-align: center; }
+    h1 { color: #333; }
+    .edit-btn, .delete-btn {
+      background-color: #007bff;
+      color: white;
+      border: none;
+      padding: 5px 10px;
+      cursor: pointer;
+    }
+    .edit-btn:hover { background-color: #0056b3; }
+    .delete-btn { background-color: #dc3545; }
+    .delete-btn:hover { background-color: #c82333; }
+  </style>
+</head>
+<body>
+  <h1>🔧 Admin Panel – Map Products to EPC</h1>
+
+  <form id="tagForm">
+    <label>EPC:</label>
+    <input type="text" id="epc" required>
+    <label>Product Name:</label>
+    <input type="text" id="product" required>
+    <label>Price:</label>
+    <input type="number" id="price" step="0.01" required>
+    <button type="submit">Add/Update Product</button>
+  </form>
+
+  <h2>📋 Registered Tags</h2>
+  <table>
+    <thead>
+      <tr><th>EPC</th><th>Product</th><th>Price</th><th>Timestamp</th><th>Actions</th></tr>
+    </thead>
+    <tbody id="tagTableBody"></tbody>
+  </table>
+
+  <script>
+    const form = document.getElementById("tagForm");
+    const tableBody = document.getElementById("tagTableBody");
+    let editingTag = null;
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const epc = document.getElementById("epc").value.trim();
+      const productName = document.getElementById("product").value.trim();
+      const price = parseFloat(document.getElementById("price").value);
+
+      if (!epc || !productName || isNaN(price)) {
+        alert("All fields are required.");
+        return;
+      }
+
+      const payload = { epc, product_name: productName, price };
+
+      if (editingTag) {
+        // Update existing tag
+        const res = await fetch(`http://localhost:8080/api/tags/${editingTag.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (res.ok) {
+          alert("Tag updated!");
+          editingTag = null;
+        } else {
+          alert("Failed to update tag");
+        }
+      } else {
+        // Add new tag
+        const res = await fetch("http://localhost:8080/api/tags", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (res.ok) {
+          alert("Tag added!");
+        } else {
+          alert("Failed to add tag");
+        }
+      }
+
+      form.reset();
+      loadTags();
+    });
+
+    async function loadTags() {
+      const res = await fetch("http://localhost:8080/api/tags");
+      const tags = await res.json();
+      tableBody.innerHTML = "";
+      tags.forEach(tag => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${tag.epc}</td>
+          <td>${tag.product ? tag.product.product_name : "Not mapped"}</td>
+          <td>$${tag.product ? tag.product.price.toFixed(2) : "-"}</td>
+          <td>${tag.timestamp ? new Date(tag.timestamp).toLocaleString() : "-"}</td>
+          <td>
+            <button class="edit-btn" onclick="editTag(${tag.id}, '${tag.epc}', '${tag.product ? tag.product.product_name : ""}', ${tag.product ? tag.product.price : 0})">Edit</button>
+            <button class="delete-btn" onclick="deleteTag(${tag.id})">Delete</button>
+          </td>
+        `;
+        tableBody.appendChild(row);
+      });
+    }
+
+    function editTag(id, epc, productName, price) {
+      document.getElementById("epc").value = epc;
+      document.getElementById("product").value = productName;
+      document.getElementById("price").value = price;
+      editingTag = { id };
+    }
+
+    async function deleteTag(id) {
+      const confirmDelete = confirm("Are you sure you want to delete this tag?");
+      if (confirmDelete) {
+        const res = await fetch(`http://localhost:8080/api/tags/${id}`, { method: "DELETE" });
+        if (res.ok) {
+          alert("Tag deleted.");
+          loadTags();
+        } else {
+          alert("Failed to delete tag.");
+        }
+      }
+    }
+
+    loadTags();
+  </script>
+</body>
+</html>
